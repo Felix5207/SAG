@@ -194,7 +194,7 @@ export class McpAgentService {
 
     assertNotAborted(input.signal);
     const answerCitations = collectAnswerCitations(toolCalls);
-    const assistantContent = assistantText || "已完成工具调用。";
+    const assistantContent = normalizeAssistantContent(assistantText, answerCitations);
     for (const delta of chunkText(assistantContent, 24)) {
       assertNotAborted(input.signal);
       emit?.({ type: "assistant_delta", delta });
@@ -509,6 +509,7 @@ async function planToolAction(input: {
           "After observing SAG results, answer from retrieved evidence. If the retrieved evidence is insufficient, say so and optionally perform one more refined sag_search.",
           "When citation_sources are provided, cite important claims with [1], [2], [3] style markers that match citation_sources.index.",
           "Do not invent citation numbers. Do not cite a source that does not support the sentence.",
+          "For final, final must be a non-empty Chinese answer to the user, not a generic completion message.",
           "Schema: {\"action\":\"call_tool\",\"toolName\":\"string\",\"arguments\":{}} or {\"action\":\"final\",\"final\":\"string\"}."
         ].join("\n")
       },
@@ -627,8 +628,27 @@ function normalizeToolAction(raw: unknown): ToolAction {
   }
   return {
     action: "final",
-    final: record.final == null ? "工具调用完成。" : String(record.final)
+    final: record.final == null ? "" : String(record.final)
   };
+}
+
+function normalizeAssistantContent(assistantText: string, citations: AnswerCitation[]): string {
+  const trimmed = assistantText.trim();
+  if (trimmed && trimmed !== "工具调用完成。" && trimmed !== "已完成本轮 MCP 工具调用。") {
+    return trimmed;
+  }
+  if (citations.length === 0) {
+    return trimmed || "已完成工具调用，但没有找到可引用的检索结果。";
+  }
+  const lines = citations.slice(0, 3).map((citation) => {
+    const heading = citation.heading ? `${citation.heading}：` : "";
+    return `- [${citation.index}] ${heading}${previewForAnswer(citation.content)}`;
+  });
+  return [
+    "已检索到以下相关证据：",
+    "",
+    ...lines
+  ].join("\n");
 }
 
 function collectAnswerCitations(toolCalls: McpToolCallRecord[]): AnswerCitation[] {
@@ -728,6 +748,11 @@ function parseToolJsonResult(result: unknown): unknown {
 
 function previewForPrompt(content: string): string {
   return content.length > 1200 ? `${content.slice(0, 1200)}...` : content;
+}
+
+function previewForAnswer(content: string): string {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  return normalized.length > 220 ? `${normalized.slice(0, 220)}...` : normalized;
 }
 
 function resolveMcpServerCommand(): { command: string; args: string[]; cwd: string } {

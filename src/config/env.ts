@@ -9,6 +9,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   HTTP_HOST: z.string().default("0.0.0.0"),
   HTTP_PORT: z.coerce.number().int().positive().default(4173),
+  HTTP_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(64 * 1024 * 1024),
   DATABASE_URL: z.string().min(1).default("postgres://sag_lite:sag_lite_pass@localhost:5432/sag_lite"),
   DEFAULT_TENANT_ID: z.string().min(1).default("default"),
   AUTH_MODE: z.enum(["none", "bearer", "external"]).default("none"),

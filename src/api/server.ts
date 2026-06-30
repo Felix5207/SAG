@@ -112,6 +112,7 @@ const aiSettingsSchema = z.object({
 
 export function buildHttpServer() {
   const app = Fastify({
+    bodyLimit: config.HTTP_BODY_LIMIT_BYTES,
     logger: {
       level: config.LOG_LEVEL,
       base: {

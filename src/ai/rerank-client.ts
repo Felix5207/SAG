@@ -21,31 +21,20 @@ export class QwenRerankClient implements RerankClient {
       return [];
     }
     const settings = await aiSettingsService.getRuntimeSettings();
-    if (!settings.hasRemoteLlm) {
-      const ids = localScoreRerank(input.query, input.candidates, input.topK);
-      const log = createModelCallLogger({
-        kind: "llm",
-        operation: "rerankEvents.local",
-        request: {
-          model: "local-lexical-rerank",
-          query: input.query,
-          topK: input.topK,
-          candidateCount: input.candidates.length
-        }
-      });
-      log.succeed({ useful_event_ids: ids });
-      return ids;
+    const rerankBaseUrl = config.RERANK_BASE_URL;
+    if (!settings.hasRemoteLlm || !rerankBaseUrl) {
+      return localRerank(input, config.RERANK_BASE_URL ? "missing-llm-api-key" : "missing-rerank-base-url");
     }
 
-    return this.remoteRerank(settings, input);
+    return this.remoteRerank(settings, input, rerankBaseUrl);
   }
 
   private async remoteRerank(settings: AiRuntimeSettings, input: {
     query: string;
     candidates: EventRecord[];
     topK: number;
-  }): Promise<string[]> {
-    const url = buildRerankUrl(config.RERANK_BASE_URL ?? settings.llmBaseUrl);
+  }, rerankBaseUrl: string): Promise<string[]> {
+    const url = buildRerankUrl(rerankBaseUrl);
     const documents = input.candidates.map((candidate) => eventToRerankDocument(candidate, input.candidates.length));
     const body = {
       model: config.RERANK_MODEL,
@@ -138,6 +127,27 @@ export function buildRerankUrl(baseUrl: string): string {
     return base;
   }
   return `${base}/v1/reranks`;
+}
+
+function localRerank(input: {
+  query: string;
+  candidates: EventRecord[];
+  topK: number;
+}, reason: string): string[] {
+  const ids = localScoreRerank(input.query, input.candidates, input.topK);
+  const log = createModelCallLogger({
+    kind: "llm",
+    operation: "rerankEvents.local",
+    request: {
+      model: "local-lexical-rerank",
+      reason,
+      query: input.query,
+      topK: input.topK,
+      candidateCount: input.candidates.length
+    }
+  });
+  log.succeed({ useful_event_ids: ids });
+  return ids;
 }
 
 function eventToRerankDocument(event: EventRecord, candidateCount: number): string {
